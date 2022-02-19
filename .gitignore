@@ -4,3 +4,6 @@ node_modules
 # Dapptools
 out/
 .env
+
+# Superfluid deps
+lib/superfluid-contracts
