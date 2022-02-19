@@ -5,3 +5,7 @@
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
     ignore = dirty
+[submodule "lib/superfluid-contracts"]
+	path = lib/superfluid-contracts
+	url = https://github.com/superfluid-finance/ethereum-contracts
+    ignore = dirty

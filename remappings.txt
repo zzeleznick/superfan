@@ -1,2 +1,3 @@
 @openzeppelin/=lib/openzeppelin-contracts/
+@superfluid-finance/=lib/superfluid-contracts/packages/
 ds-test/=lib/ds-test/src/
