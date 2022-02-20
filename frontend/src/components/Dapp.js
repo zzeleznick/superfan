@@ -126,6 +126,30 @@ export class Dapp extends React.Component {
     this.setDaiXBalance(wad4human(await daix.balanceOf.call(userAddress)));
   }
 
+  async hasFlows(user) {
+    const { inFlows, outFlows } = (await user.details()).cfa.flows;
+    return inFlows.length + outFlows.length > 0;
+  }
+
+  async logFlows(user) {
+    console.log(wad4human((await user.details()).cfa.netFlow));
+  }
+
+  async createFlow(tierId = 1) {
+    const expectedFlowRate = await app.flowRates(tierId)
+    const subId = await app.nextSubscriptionId();
+    console.log(`expectedFlowRate: ${expectedFlowRate} for tierId: ${tierId} with subId: ${subId}`);
+    
+    await user.flow({
+      flowRate: `${expectedFlowRate}`,
+      recipient: contractAddress.SuperFan,
+      userData: sf.web3.eth.abi.encodeParameters(['uint256', 'uint256'],[tierId, subId])
+    });
+
+    await this.logFlows(user);
+
+  }
+
   render() {
     // Ethereum wallets inject the window.ethereum object. If it hasn't been
     // injected, we instruct the user to install MetaMask.
@@ -163,7 +187,7 @@ export class Dapp extends React.Component {
     const mintDaiButton = (
       <div className="w-100 p-4 text-center">
           <button
-            className="w-100 btn btn-success"
+            className="w-100 btn btn-primary"
             type="button"
             onClick={() => this.mintDAI()}
           >
@@ -175,7 +199,7 @@ export class Dapp extends React.Component {
     const approveDaiButton = (
       <div className="w-100 p-4 text-center">
           <button
-            className="w-100 btn btn-primary"
+            className="w-100 btn btn-warning"
             type="button"
             onClick={() => this.approveDAI()}
           >
@@ -187,11 +211,23 @@ export class Dapp extends React.Component {
     const upgradeDaiButton = (
       <div className="w-100 p-4 text-center">
           <button
-            className="w-100 btn btn-secondary"
+            className="w-100 btn btn-info"
             type="button"
             onClick={() => this.upgradeDAI()}
           >
             {"Upgrade Dai"}
+          </button>
+        </div>
+    );
+
+    const createFlowButton = (
+      <div className="w-100 p-4 text-center">
+          <button
+            className="w-100 btn btn-success"
+            type="button"
+            onClick={() => this.createFlow()}
+          >
+            {"Create Flow"}
           </button>
         </div>
     );
@@ -227,6 +263,7 @@ export class Dapp extends React.Component {
             { mintDaiButton }
             { approveDaiButton }
             { upgradeDaiButton }
+            { createFlowButton }
 
           </div>
         </div>
@@ -351,7 +388,6 @@ export class Dapp extends React.Component {
   }
 
   async _initializeSuperfluid(userAddress) {
-    app = this._token;
 
     sf = new SuperfluidSDK.Framework({
       // ethers: new Web3Provider(window.ethereum),
@@ -385,6 +421,9 @@ export class Dapp extends React.Component {
       SuperFanArtifact.abi,
       this._provider.getSigner(0)
     );
+
+    app = this._token;
+
   }
 
   // The next two methods are needed to start and stop polling data. While
