@@ -29,7 +29,8 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
 
     ISuperToken public _acceptedToken; // accepted token
 
-    mapping(uint256 => int96) public flowRates;
+    mapping(uint256 => int96) public flowRates; // per tier
+    // mapping(address => int96) public userFlowRates; // flow per
 
     mapping(uint256 => address) private subscriptionToPayor;
     mapping(uint256 => uint256) private subscriptionToTier;
@@ -127,7 +128,12 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         require(tokenId == nextSubscriptionId, Errors.TokenIdMismatch);
 
         (address subscriber,) = abi.decode(agreementData, (address, address));
-        (,int96 flowRate,,) = _cfa.getFlowByID(_acceptedToken, agreementId);
+        (,int96 flowRate,,) = _cfa.getFlowByID(_acceptedToken, agreementId); // from user
+        (,int96 existingFlowRate,,) = _cfa.getFlow(_acceptedToken, address(this), _owner);
+
+        console.log("flowRate, existingFlowRate"); // , flowRate, existingFlowRate);
+        console.logInt(flowRate);
+        console.logInt(existingFlowRate);
 
         int96 expectedFlowRate = flowRates[tierId];
         require(flowRate == expectedFlowRate, Errors.FlowRateMismatch);
@@ -135,8 +141,11 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         flowIdToSubscription[agreementId] = nextSubscriptionId;
 
         // pass from app to creator
-        newCtx = _createFlowWithCtx(_ctx, _owner, tierId, nextSubscriptionId, flowRate);
-
+        if(existingFlowRate == int96(0)) {
+            newCtx = _createFlowWithCtx(_ctx, _owner, tierId, nextSubscriptionId, flowRate);
+        } else {
+            newCtx = _updateFlowWithCtx(_ctx, _owner, tierId, nextSubscriptionId, existingFlowRate, flowRate);
+        }
         _handleSubscribe(subscriber, subscriber, flowRate, tierId);
     }
 
@@ -300,6 +309,32 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
                     _acceptedToken,
                     to,
                     flowRate,
+                    new bytes(0) // placeholder
+                ),
+                abi.encode(tierId, tokenId),  // user data
+                ctx
+        );
+    }
+
+    function _updateFlowWithCtx(
+        bytes memory ctx,
+        address to,
+        uint256 tierId,
+        uint256 tokenId,
+        int96 oldFlowRate,
+        int96 flowRate
+    ) internal returns (bytes memory newCtx) {
+
+        int96 expectedFlowRate = flowRates[tierId];
+        require(flowRate == expectedFlowRate, Errors.FlowRateMismatch);
+
+        (newCtx, ) = _host.callAgreementWithContext(
+                _cfa,
+                abi.encodeWithSelector(
+                    _cfa.updateFlow.selector,
+                    _acceptedToken,
+                    to,
+                    oldFlowRate + flowRate,
                     new bytes(0) // placeholder
                 ),
                 abi.encode(tierId, tokenId),  // user data

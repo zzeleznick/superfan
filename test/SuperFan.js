@@ -247,7 +247,7 @@ describe("SuperFan contract", function () {
         userData: web3.eth.abi.encodeParameters(['uint256', 'uint256'],[1, 2]) // actual recipient
       });
 
-      expect(await app.nextSubscriptionId()).to.equal(nextSubs+1);
+      expect(await app.nextSubscriptionId()).to.equal(Number(nextSubs)+1);
 
       await carol.flow({
         flowRate: `${goldFlowRate}`,
@@ -255,7 +255,7 @@ describe("SuperFan contract", function () {
         userData: web3.eth.abi.encodeParameters(['uint256', 'uint256'],[2, 3]) // actual recipient
       });
 
-      expect(await app.nextSubscriptionId()).to.equal(nextSubs+2);
+      expect(await app.nextSubscriptionId()).to.equal(Number(nextSubs)+2);
       
       await appStatus();
       await logUsers();
