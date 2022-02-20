@@ -1,0 +1,19 @@
+Initializing Superfluid Framework...
+version test
+networkType rinkeby
+networkId 4
+chainId 4
+Using @superfluid-finance/js-sdk in a non-native Truffle environment.
+                Peer dependency @truffle/contract is required.
+Set default from address to the first account 0x109E9e84018eD6b8300FeC2b4B659ec72F0e2734
+Resolver at 0x6c50A2E7690C11cacB862Aa57FF407915f69EECD
+Superfluid Loader v1 0x865c712969033cBF781696C8ba64851c1Ec1284B
+Loading framework with release version test
+Superfluid host contract: TruffleContract .host 0x8291eBb675544c5cF651F2635AEF56Ff201089E6
+SuperTokenFactory address: 0x97bA5A22D9e7a7dB8989987Dc0a1d5b576505b67
+ConstantFlowAgreementV1: TruffleContract .agreements.cfa | Helper .cfa 0x78318F580e7B10567c0b0fd1deb9f488F2c178fD
+InstantDistributionAgreementV1: TruffleContract .agreements.ida | Helper .ida 0x68b47F67dD4Fd36cf51b3B1703f536AdE5d6579b
+fDAI: ERC20WithTokenInfo .tokens["fDAI"] 0x3456196457e15Bb3e7685560a53247871beBBf47
+fDAIx: ISuperToken .tokens["fDAIx"]  0xb5688C1a8775B7140572d833e778a9D5DF16B9cd
+Superfluid Framework initialized.
+app address: 0x5Dda8C8a893E5B4887331C2CaaF8EB0462be41B0
