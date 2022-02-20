@@ -32,6 +32,13 @@ const { web3tx, toWad, wad4human } = require("@decentral.ee/web3-helpers");
 // Here's a list of network ids https://docs.metamask.io/guide/ethereum-provider.html#properties
 // to use when deploying to other networks.
 const HARDHAT_NETWORK_ID = '31337';
+const HARDHAT_SF_RESOLVER = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512';
+
+const RINKEBY_NETWORK_ID = '4';
+const RINKEBY_SF_RESOLVER = '0x6c50A2E7690C11cacB862Aa57FF407915f69EECD';
+
+const NETWORK_ID = 1 ? RINKEBY_NETWORK_ID : HARDHAT_NETWORK_ID;
+const RESOLVER = 1 ? RINKEBY_SF_RESOLVER : HARDHAT_SF_RESOLVER;
 
 // This is an error code that indicates that the user canceled a transaction
 const ERROR_CODE_TX_REJECTED_BY_USER = 4001;
@@ -392,7 +399,7 @@ export class Dapp extends React.Component {
     sf = new SuperfluidSDK.Framework({
       // ethers: new Web3Provider(window.ethereum),
       web3: new Web3(window.ethereum),
-      resolverAddress: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      resolverAddress: RESOLVER,
       version: "test",
       tokens: ["fDAI"],
     });
@@ -554,12 +561,12 @@ export class Dapp extends React.Component {
 
   // This method checks if Metamask selected network is Localhost:8545 
   _checkNetwork() {
-    if (window.ethereum.networkVersion === HARDHAT_NETWORK_ID) {
+    if (window.ethereum.networkVersion === NETWORK_ID) {
       return true;
     }
 
     this.setState({ 
-      networkError: 'Please connect Metamask to Localhost:8545'
+      networkError: 'Please connect Metamask to Rinkeby' //Localhost:8545'
     });
 
     return false;
