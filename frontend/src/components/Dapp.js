@@ -23,7 +23,7 @@ import { NoTokensMessage } from "./NoTokensMessage";
 import Web3 from "web3";
 
 const SuperfluidSDK = require("@superfluid-finance/js-sdk");
-const { wad4human } = require("@decentral.ee/web3-helpers");
+const { web3tx, toWad, wad4human } = require("@decentral.ee/web3-helpers");
 
 // const { Web3Provider } = require("@ethersproject/providers");
 
@@ -66,6 +66,7 @@ export class Dapp extends React.Component {
       selectedAddress: undefined,
       balance: undefined,
       daiBalance: undefined,
+      daiXBalance: undefined,
       // The ID about transactions being sent, and any possible error with them
       txBeingSent: undefined,
       transactionError: undefined,
@@ -78,6 +79,12 @@ export class Dapp extends React.Component {
   setDaiBalance(amount) {
     this.setState({
       daiBalance: amount,
+    });
+  }
+
+  setDaiXBalance(amount) {
+    this.setState({
+      daiXBalance: amount,
     });
   }
 
@@ -111,6 +118,14 @@ export class Dapp extends React.Component {
       );
   }
 
+  async upgradeDAI(amount = 1000) {
+    const userAddress = this.state.selectedAddress;
+    await web3tx(daix.upgrade,
+          `${userAddress} upgrades many DAIx`
+     )(toWad(amount), { from: userAddress });
+    this.setDaiXBalance(wad4human(await daix.balanceOf.call(userAddress)));
+  }
+
   render() {
     // Ethereum wallets inject the window.ethereum object. If it hasn't been
     // injected, we instruct the user to install MetaMask.
@@ -137,7 +152,11 @@ export class Dapp extends React.Component {
 
     // If the token data or the user's balance hasn't loaded yet, we show
     // a loading component.
-    if (!this.state.tokenData || !this.state.balance || !this.state.daiBalance) {
+    if (!this.state.tokenData ||
+      !this.state.balance ||
+      !this.state.daiBalance ||
+      !this.state.daiXBalance
+    ) {
       return <Loading />;
     }
 
@@ -153,7 +172,7 @@ export class Dapp extends React.Component {
         </div>
     );
 
-     const approveDaiButton = (
+    const approveDaiButton = (
       <div className="w-100 p-4 text-center">
           <button
             className="w-100 btn btn-primary"
@@ -161,6 +180,18 @@ export class Dapp extends React.Component {
             onClick={() => this.approveDAI()}
           >
             {"Approve Dai"}
+          </button>
+        </div>
+    );
+
+    const upgradeDaiButton = (
+      <div className="w-100 p-4 text-center">
+          <button
+            className="w-100 btn btn-secondary"
+            type="button"
+            onClick={() => this.upgradeDAI()}
+          >
+            {"Upgrade Dai"}
           </button>
         </div>
     );
@@ -177,7 +208,9 @@ export class Dapp extends React.Component {
               {this.state.tokenData.name} ({this.state.tokenData.symbol})
             </h1>
             <p>
-              Welcome <b>{this.state.selectedAddress}</b>, you have{" "}
+              Welcome <b>{this.state.selectedAddress}</b>
+              <br/>
+              you have{" "}
               <b>
                 {this.state.balance.toString()} {this.state.tokenData.symbol}
               </b>
@@ -185,10 +218,15 @@ export class Dapp extends React.Component {
               <b>
                 {this.state.daiBalance.toString()} {"Dai"}
               </b>
+              {", "}
+              <b>
+                {this.state.daiXBalance.toString()} {"DAIx"}
+              </b>
               .
             </p>
             { mintDaiButton }
             { approveDaiButton }
+            { upgradeDaiButton }
 
           </div>
         </div>
@@ -380,10 +418,14 @@ export class Dapp extends React.Component {
   async _updateBalance() {
     const balance = await this._token.balanceOf(this.state.selectedAddress);
     let daiBalance;
+    let daiXBalance;
     if (dai) {
       daiBalance = await dai.balanceOf.call(this.state.selectedAddress);  
     }
-    this.setState({ balance, daiBalance });
+    if (daix) {
+      daiXBalance = await daix.balanceOf.call(this.state.selectedAddress);  
+    }
+    this.setState({ balance, daiBalance, daiXBalance});
   }
 
   // This method sends an ethereum transaction to transfer tokens.
