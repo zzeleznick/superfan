@@ -5,7 +5,7 @@
 
 // We import Chai to use its asserting functions here.
 const { expect } = require("chai");
-
+/*
 // `describe` is a Mocha function that allows you to organize your tests. It's
 // not actually needed, but having your tests organized makes debugging them
 // easier. All Mocha functions are available in the global scope.
@@ -131,3 +131,4 @@ describe("Token contract", function () {
     });
   });
 });
+*/

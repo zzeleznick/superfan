@@ -8,6 +8,8 @@ import "@superfluid-finance/ethereum-contracts/contracts/apps/SuperAppBase.sol";
 import "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 import "@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol";
 
+import "hardhat/console.sol";
+
 library Errors {
     string internal constant PositiveFlow = "flow rate must be positive";
     string internal constant TokenIdMismatch = "invalid tokenId";
@@ -111,7 +113,7 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
             _burn(tokenId);
         }
 
-        // presersve flowIdToSubscription for debugging
+        // preserve flowIdToSubscription for debugging
         // delete flowIdToSubscription[agreementId];
 
         delete subscriptionToCreator[tokenId];
@@ -125,23 +127,34 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
     {
         newCtx = _ctx;
         (uint256 tierId, uint256 tokenId) = abi.decode(_host.decodeCtx(_ctx).userData, (uint256, uint256));
+        console.log("tierId: %s, tokenId: %s", tierId, tokenId);
+        
         require(tokenId == nextSubscriptionId, Errors.TokenIdMismatch);
 
-        (address subscriber, address creator) = abi.decode(agreementData, (address, address));
+        (address subscriber, address app) = abi.decode(agreementData, (address, address));
         (,int96 flowRate,,) = _cfa.getFlowByID(_acceptedToken, agreementId);
 
         int96 expectedFlowRate = flowRates[tierId];
         require(flowRate == expectedFlowRate, Errors.FlowRateMismatch);
+        
         address expectedCreator = tierIdToCreator[tierId];
-        require(creator == expectedCreator, Errors.TierOwnerMismatch);
+        
+        // require(creator == expectedCreator, Errors.TierOwnerMismatch);
         // require(length(creatorTiers[creator]) > 0, "No tiers found for creator");
         // require(contains(creatorTiers[creator]), tierId), "Creator does not have this tier");
         
         flowIdToSubscription[agreementId] = nextSubscriptionId;
+
+        // pass from app to creator
+        _createFlow()
+
         _handleSubscribe(subscriber, subscriber, creator, flowRate, tierId);
     }
 
+    /*
+
     function _subscribe(address subscriber, uint256 tierId) public {
+        console.log("%s subscribing to %s for %s", msg.sender, tierId, subscriber);
         address creator = tierIdToCreator[tierId];
         require(creator != address(0), Errors.TierOwnerMismatch);
 
@@ -156,6 +169,7 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
     }
 
     function subscribe(uint256 tierId) external {
+        console.log("%s subscribing to %s", msg.sender, tierId);
         _subscribe(msg.sender, tierId);
     }
 
@@ -166,7 +180,9 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         address creator = tierIdToCreator[tierId];
         require(creator != address(0), Errors.TierOwnerMismatch);
         _deleteFlow(payor, creator);
-    }
+    } 
+
+    */
 
     /**************************************************************************
      * Callbacks
@@ -276,7 +292,7 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
     /**************************************************************************
      * Library
      *************************************************************************/
-    function _createFlow(address to, uint256 tierId, uint256 tokenId, int96 flowRate) internal exists(tokenId) {
+    function _createFlow(address to, uint256 tierId, uint256 tokenId, int96 flowRate) internal {
         if (to == address(this) || to == address(0)) return;
 
         int96 expectedFlowRate = flowRates[tierId];
@@ -309,3 +325,8 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         );
     }
 }
+
+
+// balanceOf(tokenId)
+// getFlow -> see
+

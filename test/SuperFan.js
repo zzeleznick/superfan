@@ -3,6 +3,8 @@ const deployTestToken = require("@superfluid-finance/ethereum-contracts/scripts/
 const deploySuperToken = require("@superfluid-finance/ethereum-contracts/scripts/deploy-super-token");
 const SuperfluidSDK = require("@superfluid-finance/js-sdk");
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
 const { expect } = require("chai");
 const { web3tx, toWad, wad4human } = require("@decentral.ee/web3-helpers");
 
@@ -33,6 +35,57 @@ describe("SuperFan contract", function () {
     if (err) throw err;
    };
 
+  async function checkBalance(user) {
+      console.log("Balance of ", user.alias);
+      console.log("DAIx: ", (await daix.balanceOf(user.address)).toString());
+  }
+
+  async function checkBalances(accounts) {
+      for (let i = 0; i < accounts.length; ++i) {
+          await checkBalance(accounts[i]);
+      }
+  }
+
+  async function hasFlows(user) {
+      const { inFlows, outFlows } = (await user.details()).cfa.flows;
+      return inFlows.length + outFlows.length > 0;
+  }
+
+  async function logUsers() {
+      let string = "user\t\ttokens\t\tnetflow\n";
+      let p = 0;
+      for (const [, user] of Object.entries(u)) {
+          if (await hasFlows(user)) {
+              p++;
+              string += `${user.alias}\t\t${wad4human(
+                  await daix.balanceOf(user.address)
+              )}\t\t${wad4human((await user.details()).cfa.netFlow)}
+          `;
+          }
+      }
+      if (p == 0) return console.warn("no users with flows");
+      console.log("User logs:");
+      console.log(string);
+  }
+
+  async function appStatus() {
+      const isApp = await sf.host.isApp(u.app.address);
+      const isJailed = await sf.host.isAppJailed(app.address);
+      !isApp && console.error("App is not an App");
+      isJailed && console.error("app is Jailed");
+      await checkBalance(u.app);
+  }
+
+  async function upgrade(accounts) {
+      for (let i = 0; i < accounts.length; ++i) {
+          await web3tx(
+              daix.upgrade,
+              `${accounts[i].alias} upgrades many DAIx`
+          )(toWad(100000), { from: accounts[i].address });
+          await checkBalance(accounts[i]);
+      }
+  }
+
   before(async function () {
     // Get the ContractFactory and Signers here.
     SuperFan = await ethers.getContractFactory("SuperFan");
@@ -40,6 +93,10 @@ describe("SuperFan contract", function () {
     // [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
     const addrs = (await web3.eth.getAccounts())
     accounts = addrs.slice(0, names.length);
+
+    let signers = await ethers.getSigners();
+    signers = signers.slice(0, names.length);
+
 
     //process.env.RESET_SUPERFLUID_FRAMEWORK = 1;
     await deployFramework(errorHandler, {
@@ -74,6 +131,7 @@ describe("SuperFan contract", function () {
             token: daix.address,
         });
         u[names[i].toLowerCase()].alias = names[i];
+        u[names[i].toLowerCase()].signer = signers[i];
         aliases[u[names[i].toLowerCase()].address] = names[i];
     }
     for (const [, user] of Object.entries(u)) {
@@ -107,6 +165,9 @@ describe("SuperFan contract", function () {
         daix.address,
     );
 
+    u.app = sf.user({ address: app.address, token: daix.address });
+    u.app.alias = "App";
+
   });
   // You can nest describe calls to create subsections.
   describe("Deployment", function () {
@@ -115,6 +176,71 @@ describe("SuperFan contract", function () {
       const ownerBalance = await app.balanceOf(u.admin.address);
       expect(ownerBalance).to.equal(0);
     });
+
+  });
+
+  describe("CreateTiers", function () {
+
+    it("Should enable tiers to be created", async function () {
+      let count = await app.nextTierId();
+      expect(count).to.equal(1);
+
+      let creator = await app.tierIdToCreator(1);
+      expect(creator).to.equal(ZERO_ADDRESS);
+
+      await app.createTier(3858024691358);
+
+      count = await app.nextTierId();
+      expect(count).to.equal(2);
+
+      creator = await app.tierIdToCreator(1);
+      expect(creator).to.equal(u.admin.address)
+
+      await app.createTier(38580246913580);
+
+      count = await app.nextTierId();
+      expect(count).to.equal(3);
+
+      creator = await app.tierIdToCreator(2);
+      expect(creator).to.equal(u.admin.address)
+
+    });
+
+  });
+
+  describe("Subscribe", function () {
+
+    it("Should enable a subscription", async function () {
+      const { alice } = u;
+      await upgrade([alice]);
+      await appStatus();
+
+      const expectedFlowRate = await app.flowRates(1)
+      console.log(`expectedFlowRate: ${expectedFlowRate}`);
+      console.log(`alice.address: ${alice.address}`);
+      console.log(`alice.signer: ${alice.signer.address}`);
+      await alice.flow({
+        flowRate: `${expectedFlowRate}`,
+        recipient: u.app,
+        userData: web3.eth.abi.encodeParameters(['uint256', 'uint256'],[1, 1]) // actual recipient
+      });
+      // await app.connect(alice.signer)._subscribe(alice.address, 1);
+      await appStatus();
+      await logUsers();
+    });
+    /*
+    it("Should enable multiple subscription", async function () {
+      const { bob, carol } = u;
+      await upgrade([bob, carol]);
+      await appStatus();
+
+      await app.connect(bob.signer)._subscribe(bob.address, 1);
+      await app.connect(carol.signer)._subscribe(carol.address, 1);
+      
+      await appStatus();
+      await logUsers();
+    });
+    */
 
   });
 
