@@ -69,7 +69,7 @@ async function main() {
   );
 
   const appAddress = app.address;
-  console.log("app address:",appAddress );
+  console.log("app address:", appAddress);
 
   // We also save the contract's artifacts and address in the frontend directory
   saveFrontendFiles({

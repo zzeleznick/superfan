@@ -122,6 +122,9 @@ describe("SuperFan contract", function () {
 
     await sf.initialize();
 
+    const config = SuperfluidSDK.getConfig(31337, "test");
+    console.log("resolverAddress:", config.resolverAddress);
+
     daix = sf.tokens.fDAIx;
     dai = await sf.contracts.TestToken.at(await sf.tokens.fDAI.address);
 

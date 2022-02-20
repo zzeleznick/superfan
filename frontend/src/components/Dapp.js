@@ -12,6 +12,7 @@ import contractAddress from "../contracts/contract-address.json";
 // These other components are just presentational ones: they don't have any
 // logic. They just render HTML.
 import { NoWalletDetected } from "./NoWalletDetected";
+import { Button } from "./Button";
 import { ConnectWallet } from "./ConnectWallet";
 import { Loading } from "./Loading";
 import { Transfer } from "./Transfer";
@@ -19,8 +20,12 @@ import { TransactionErrorMessage } from "./TransactionErrorMessage";
 import { WaitingForTransactionMessage } from "./WaitingForTransactionMessage";
 import { NoTokensMessage } from "./NoTokensMessage";
 
+import Web3 from "web3";
+
 const SuperfluidSDK = require("@superfluid-finance/js-sdk");
-const { Web3Provider } = require("@ethersproject/providers");
+const { wad4human } = require("@decentral.ee/web3-helpers");
+
+// const { Web3Provider } = require("@ethersproject/providers");
 
 // This is the Hardhat Network id, you might change it in the hardhat.config.js.
 // If you are using MetaMask, be sure to change the Network id to 1337.
@@ -59,6 +64,7 @@ export class Dapp extends React.Component {
       // The user's address and balance
       selectedAddress: undefined,
       balance: undefined,
+      daiBalance: undefined,
       // The ID about transactions being sent, and any possible error with them
       txBeingSent: undefined,
       transactionError: undefined,
@@ -66,6 +72,42 @@ export class Dapp extends React.Component {
     };
 
     this.state = this.initialState;
+  }
+
+  setDaiBalance(amount) {
+    this.setState({
+      daiBalance: amount,
+    });
+  }
+
+  setDAIapproved(amount) {
+    console.log(`Set ${amount} amount for approval`);
+  }
+
+  async mintDAI(amount = 1000) {
+    const userAddress = this.state.selectedAddress;
+    await dai.mint(
+      userAddress,
+      sf.web3.utils.toWei(amount.toString(), "ether"),
+      { from: userAddress }
+    );
+    this.setDaiBalance(wad4human(await dai.balanceOf.call(userAddress)));
+  }
+
+  // approve max
+  async approveDAI() {
+    const userAddress = this.state.selectedAddress;
+    await dai
+      .approve(
+        daix.address,
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        { from: userAddress }
+      )
+      .then(async i =>
+        this.setDAIapproved(
+          wad4human(await dai.allowance.call(userAddress, daix.address))
+        )
+      );
   }
 
   render() {
@@ -94,9 +136,36 @@ export class Dapp extends React.Component {
 
     // If the token data or the user's balance hasn't loaded yet, we show
     // a loading component.
-    if (!this.state.tokenData || !this.state.balance) {
+    if (!this.state.tokenData || !this.state.balance || !this.state.daiBalance) {
       return <Loading />;
     }
+
+    const mintDaiButton = (
+      <div className="w-100 p-4 text-center">
+          <button
+            className="w-100 btn btn-success"
+            type="button"
+            onClick={() => this.mintDAI()}
+          >
+            {"Mint Dai"}
+          </button>
+        </div>
+    );
+
+     const approveDaiButton = (
+      <div className="w-100 p-4 text-center">
+          <button
+            className="w-100 btn btn-primary"
+            type="button"
+            onClick={() => this.approveDAI()}
+          >
+            {"Approve Dai"}
+          </button>
+        </div>
+    );
+
+    //
+    // <Button text={"Mint Dai"} onClick={() => this.mintDAI()}/>
 
     // If everything is loaded, we render the application.
     return (
@@ -111,8 +180,15 @@ export class Dapp extends React.Component {
               <b>
                 {this.state.balance.toString()} {this.state.tokenData.symbol}
               </b>
+              {", "}
+              <b>
+                {this.state.daiBalance.toString()} {"Dai"}
+              </b>
               .
             </p>
+            { mintDaiButton }
+            { approveDaiButton }
+
           </div>
         </div>
 
@@ -229,8 +305,28 @@ export class Dapp extends React.Component {
     // Fetching the token data and the user's balance are specific to this
     // sample project, but you can reuse the same initialization pattern.
     this._initializeEthers();
+    this._initializeSuperfluid();
     this._getTokenData();
     this._startPollingData();
+  }
+
+  async _initializeSuperfluid() {
+    app = this._token;
+
+    sf = new SuperfluidSDK.Framework({
+      // ethers: new Web3Provider(window.ethereum),
+      web3: new Web3(window.ethereum),
+      resolverAddress: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      version: "test",
+      tokens: ["fDAI"],
+    });
+
+    await sf.initialize();
+
+    dai = await sf.contracts.TestToken.at(sf.tokens.fDAI.address);
+    daix = sf.tokens.fDAIx;
+
+    global.web3 = sf.web3;
   }
 
   async _initializeEthers() {
@@ -244,21 +340,6 @@ export class Dapp extends React.Component {
       SuperFanArtifact.abi,
       this._provider.getSigner(0)
     );
-
-    app = this._token;
-
-    sf = new SuperfluidSDK.Framework({
-      ethers: this._provider,
-      tokens: ["fDAI"]
-    });
-
-    await sf.initialize();
-
-    dai = await sf.contracts.TestToken.at(sf.tokens.fDAI.address);
-    daix = sf.tokens.fDAIx;
-
-    global.web3 = sf.web3;
-
   }
 
   // The next two methods are needed to start and stop polling data. While
@@ -291,7 +372,11 @@ export class Dapp extends React.Component {
 
   async _updateBalance() {
     const balance = await this._token.balanceOf(this.state.selectedAddress);
-    this.setState({ balance });
+    let daiBalance;
+    if (dai) {
+      daiBalance = await dai.balanceOf.call(this.state.selectedAddress);  
+    }
+    this.setState({ balance, daiBalance });
   }
 
   // This method sends an ethereum transaction to transfer tokens.
