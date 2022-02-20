@@ -1,5 +1,10 @@
 // This is a script for deploying your contracts. You can adapt it to deploy
 // yours, or create new ones.
+const deployFramework = require("@superfluid-finance/ethereum-contracts/scripts/deploy-framework");
+const deployTestToken = require("@superfluid-finance/ethereum-contracts/scripts/deploy-test-token");
+const deploySuperToken = require("@superfluid-finance/ethereum-contracts/scripts/deploy-super-token");
+const SuperfluidSDK = require("@superfluid-finance/js-sdk");
+
 async function main() {
   // This is just a convenience check
   if (network.name === "hardhat") {
@@ -10,6 +15,10 @@ async function main() {
     );
   }
 
+  const errorHandler = (err) => {
+    if (err) throw err;
+  };
+
   // ethers is available in the global scope
   const [deployer] = await ethers.getSigners();
   console.log(
@@ -17,16 +26,52 @@ async function main() {
     await deployer.getAddress()
   );
 
+  const [owner, ...addrs] = (await web3.eth.getAccounts());
+
   console.log("Account balance:", (await deployer.getBalance()).toString());
 
-  const Token = await ethers.getContractFactory("Token");
-  const token = await Token.deploy();
-  await token.deployed();
+  const SuperFan = await ethers.getContractFactory("SuperFan");
+  
+  await deployFramework(errorHandler, {
+        web3,
+        from: owner,
+        newTestResolver: true
+    });
 
-  console.log("Token address:", token.address);
+  await deployTestToken(errorHandler, [":", "fDAI"], {
+      web3,
+      from: owner,
+  });
+
+  await deploySuperToken(errorHandler, [":", "fDAI"], {
+      web3,
+      from: owner,
+  });
+
+  sf = new SuperfluidSDK.Framework({
+        web3,
+        version: "test",
+        tokens: ["fDAI"],
+  });
+
+  await sf.initialize();
+
+  daix = sf.tokens.fDAIx;
+  dai = await sf.contracts.TestToken.at(await sf.tokens.fDAI.address);
+
+  app = await SuperFan.deploy(
+        owner,
+        "SuperFan",
+        "SFAN",
+        sf.host.address,
+        sf.agreements.cfa.address,
+        daix.address,
+  );
+
+  console.log("app address:", app.address);
 
   // We also save the contract's artifacts and address in the frontend directory
-  saveFrontendFiles(token);
+  saveFrontendFiles(app);
 }
 
 function saveFrontendFiles(token) {
@@ -39,14 +84,14 @@ function saveFrontendFiles(token) {
 
   fs.writeFileSync(
     contractsDir + "/contract-address.json",
-    JSON.stringify({ Token: token.address }, undefined, 2)
+    JSON.stringify({ SuperFan: token.address }, undefined, 2)
   );
 
-  const TokenArtifact = artifacts.readArtifactSync("Token");
+  const SuperFanArtifact = artifacts.readArtifactSync("SuperFan");
 
   fs.writeFileSync(
-    contractsDir + "/Token.json",
-    JSON.stringify(TokenArtifact, null, 2)
+    contractsDir + "/SuperFan.json",
+    JSON.stringify(SuperFanArtifact, null, 2)
   );
 }
 
