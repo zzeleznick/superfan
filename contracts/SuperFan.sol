@@ -30,7 +30,6 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
     ISuperToken public _acceptedToken; // accepted token
 
     mapping(uint256 => int96) public flowRates; // per tier
-    // mapping(address => int96) public userFlowRates; // flow per
 
     mapping(uint256 => address) private subscriptionToPayor;
     mapping(uint256 => uint256) private subscriptionToTier;
@@ -64,9 +63,7 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
 
         uint256 configWord =
             SuperAppDefinitions.APP_LEVEL_FINAL |
-            SuperAppDefinitions.BEFORE_AGREEMENT_CREATED_NOOP |
-            SuperAppDefinitions.BEFORE_AGREEMENT_UPDATED_NOOP |
-            SuperAppDefinitions.BEFORE_AGREEMENT_TERMINATED_NOOP;
+            SuperAppDefinitions.BEFORE_AGREEMENT_CREATED_NOOP;
 
         _host.registerApp(configWord);
     }
@@ -98,19 +95,30 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         nextSubscriptionId += 1;
     }
 
-    function _placeUnsubscription(bytes calldata _ctx, bytes32 agreementId)
+    function _placeUnsubscription(bytes calldata _ctx, bytes32 agreementId, int96 flowRate)
         private
         returns (bytes memory newCtx)
     {
         newCtx = _ctx;
         uint256 tokenId = flowIdToSubscription[agreementId];
 
+        console.log("_placeUnsubscription: %s", tokenId);
+
         if(_exists(tokenId)) {
             _burn(tokenId);
         }
 
-        // preserve flowIdToSubscription for debugging
-        // delete flowIdToSubscription[agreementId];
+        (,int96 existingFlowRate,,) = _cfa.getFlow(_acceptedToken, address(this), _owner);
+        console.log("flowRate, existingFlowRate");
+        console.logInt(flowRate);
+        console.logInt(existingFlowRate);
+
+        // need to adjust flow from app to owner
+        if(existingFlowRate == int96(0)) {
+            newCtx = _deleteFlowWithCtx(_ctx, _owner);
+        } else {
+            newCtx = _decreaseFlowWithCtx(_ctx, _owner, existingFlowRate, flowRate);
+        }
 
         delete subscriptionToPayor[tokenId];
         delete subscriptionToTier[tokenId];
@@ -149,39 +157,6 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         _handleSubscribe(subscriber, subscriber, flowRate, tierId);
     }
 
-    /*
-
-    function _subscribe(address subscriber, uint256 tierId) public {
-        console.log("%s subscribing to %s for %s", msg.sender, tierId, subscriber);
-        address creator = tierIdToCreator[tierId];
-        require(creator != address(0), Errors.TierOwnerMismatch);
-
-        int96 flowRate = flowRates[tierId];
-        require(flowRate > 0, Errors.PositiveFlow);
-
-        (, int96 currentFlowRate,,) = _cfa.getFlow(_acceptedToken, subscriber, creator);
-
-        if (currentFlowRate == int96(0)) {
-            _createFlow(creator, tierId, nextSubscriptionId, flowRate);
-        }
-    }
-
-    function subscribe(uint256 tierId) external {
-        console.log("%s subscribing to %s", msg.sender, tierId);
-        _subscribe(msg.sender, tierId);
-    }
-
-    function unsubscribe(uint256 tokenId) external exists(tokenId) {
-        address payor = subscriptionToPayor[tokenId];
-        require(msg.sender == ownerOf(tokenId) || msg.sender == payor, Errors.OwnerMismatch);
-        uint256 tierId = subscriptionToTier[tokenId];
-        address creator = tierIdToCreator[tierId];
-        require(creator != address(0), Errors.TierOwnerMismatch);
-        _deleteFlow(payor, creator);
-    } 
-
-    */
-
     /**************************************************************************
      * Callbacks
     *************************************************************************/
@@ -198,40 +173,43 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         onlyHost
         returns (bytes memory)
     {
+        console.log("afterAgreementCreated");
         return _placeSubscription(_ctx, _agreementId, _agreementData);
     }
-    
-    function beforeAgreementTerminated(
-        ISuperToken superToken,
-        address agreementClass,
+
+     function beforeAgreementUpdated(
+        ISuperToken _superToken,
+        address _agreementClass,
         bytes32 /*agreementId*/,
-        bytes calldata /*agreementData*/,
+        bytes calldata /*_agreementData*/,
         bytes calldata /*ctx*/
     )
         external view override
-        onlyHost
-        returns (bytes memory cbdata)
-    {
-        // According to the app basic law, we should never revert in a termination callback
-        if (!_isAccepted(superToken) || !_isCFAv1(agreementClass)) return abi.encode(true);
-        return abi.encode(false);
-    }
-
-    // todo: handle update less harshly
-    function afterAgreementUpdated(
-        ISuperToken _superToken,
-        address _agreementClass,
-        bytes32 _agreementId,
-        bytes calldata /*_agreementData*/,
-        bytes calldata /*_cbdata*/,
-        bytes calldata _ctx
-    )
-        external override
         onlyExpected(_superToken, _agreementClass)
         onlyHost
         returns (bytes memory)
     {
-        return _placeUnsubscription(_ctx, _agreementId);
+        revert("update unsupported: must delete and create flow");
+        // return abi.encode(false);
+    }
+
+    function beforeAgreementTerminated(
+        ISuperToken _superToken,
+        address _agreementClass,
+        bytes32 _agreementId,
+        bytes calldata /*_agreementData*/,
+        bytes calldata /*ctx*/
+    )
+        external view override
+        onlyExpected(_superToken, _agreementClass)
+        onlyHost
+        returns (bytes memory)
+    {
+        console.log("beforeAgreementTerminated");
+        (,int96 flowRate,,) = _cfa.getFlowByID(_acceptedToken, _agreementId); // from user
+        console.log("flowRate");
+        console.logInt(flowRate);
+        return abi.encode(flowRate);
     }
 
     function afterAgreementTerminated(
@@ -246,13 +224,15 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         onlyHost
         returns (bytes memory newCtx)
     {
-        // According to the app basic law, we should never revert in a termination callback
-        (bool shouldIgnore) = abi.decode(_cbdata, (bool));
-        if (shouldIgnore) return _ctx;
+
+        console.log("afterAgreementTerminated");
+        (int96 flowRate) = abi.decode(_cbdata, (int96));
+
         // (address subscriber, address creator) = abi.decode(agreementData, (address, address));
         // don't rely on supplied user data (potentially malicious)
         // (uint256 tierId, uint256 tokenId) = abi.decode(_host.decodeCtx(ctx).userData, (uint256, uint256));
-        return _placeUnsubscription(_ctx, _agreementId);
+        
+        return _placeUnsubscription(_ctx, _agreementId, flowRate);
     }
 
     /**************************************************************************
@@ -311,11 +291,12 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
                     flowRate,
                     new bytes(0) // placeholder
                 ),
-                abi.encode(tierId, tokenId),  // user data
+                "0x", // user data
                 ctx
         );
     }
 
+    // flow from app to owner (with new subscriber)
     function _updateFlowWithCtx(
         bytes memory ctx,
         address to,
@@ -324,9 +305,6 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         int96 oldFlowRate,
         int96 flowRate
     ) internal returns (bytes memory newCtx) {
-
-        int96 expectedFlowRate = flowRates[tierId];
-        require(flowRate == expectedFlowRate, Errors.FlowRateMismatch);
 
         (newCtx, ) = _host.callAgreementWithContext(
                 _cfa,
@@ -337,7 +315,46 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
                     oldFlowRate + flowRate,
                     new bytes(0) // placeholder
                 ),
-                abi.encode(tierId, tokenId),  // user data
+                "0x", // user data
+                ctx
+        );
+    }
+
+    // flow from app to owner (with unsubscriber)
+    function _decreaseFlowWithCtx(
+        bytes memory ctx,
+        address to,
+        int96 oldFlowRate,
+        int96 flowRate
+    ) internal returns (bytes memory newCtx) {
+
+        (newCtx, ) = _host.callAgreementWithContext(
+                _cfa,
+                abi.encodeWithSelector(
+                    _cfa.updateFlow.selector,
+                    _acceptedToken,
+                    to,
+                    oldFlowRate - flowRate,
+                    new bytes(0) // placeholder
+                ),
+                "0x",  // user data
+                ctx
+        );
+    }
+
+    function _deleteFlowWithCtx(
+        bytes memory ctx,
+        address to
+    ) internal returns (bytes memory newCtx) {
+        (newCtx, ) = _host.callAgreementWithContext(
+                _cfa,
+                abi.encodeWithSelector(
+                    _cfa.deleteFlow.selector,
+                    _acceptedToken,
+                    to,
+                    new bytes(0) // placeholder
+                ),
+                "0x",  // user data
                 ctx
         );
     }

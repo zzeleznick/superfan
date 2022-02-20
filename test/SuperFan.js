@@ -261,6 +261,23 @@ describe("SuperFan contract", function () {
       await logUsers();
     });
 
+    it("Should enable an unsubscription", async function () {
+      const { alice } = u;
+
+      const aliceBalance = await app.balanceOf(alice.address);
+
+      await alice.flow({
+        flowRate: '0', // delete flow (hopefully)
+        recipient: u.app,
+      });
+
+      await appStatus();
+      await logUsers();
+
+      expect(await app.balanceOf(alice.address)).to.equal(Number(aliceBalance)-1);
+
+    });
+
   });
 
 });
