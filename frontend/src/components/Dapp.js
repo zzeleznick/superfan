@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 
 // We import the contract's artifacts and address here, as we are going to be
 // using them with ethers
-import TokenArtifact from "../contracts/Token.json";
+import SuperFanArtifact from "../contracts/SuperFan.json";
 import contractAddress from "../contracts/contract-address.json";
 
 // All the logic of this dapp is contained in the Dapp component.
@@ -18,6 +18,9 @@ import { Transfer } from "./Transfer";
 import { TransactionErrorMessage } from "./TransactionErrorMessage";
 import { WaitingForTransactionMessage } from "./WaitingForTransactionMessage";
 import { NoTokensMessage } from "./NoTokensMessage";
+
+const SuperfluidSDK = require("@superfluid-finance/js-sdk");
+const { Web3Provider } = require("@ethersproject/providers");
 
 // This is the Hardhat Network id, you might change it in the hardhat.config.js.
 // If you are using MetaMask, be sure to change the Network id to 1337.
@@ -38,6 +41,12 @@ const ERROR_CODE_TX_REJECTED_BY_USER = 4001;
 // Note that (3) and (4) are specific of this sample application, but they show
 // you how to keep your Dapp and contract's state in sync,  and how to send a
 // transaction.
+
+let sf;
+let dai;
+let daix;
+let app;
+
 export class Dapp extends React.Component {
   constructor(props) {
     super(props);
@@ -231,10 +240,25 @@ export class Dapp extends React.Component {
     // Then, we initialize the contract using that provider and the token's
     // artifact. You can do this same thing with your contracts.
     this._token = new ethers.Contract(
-      contractAddress.Token,
-      TokenArtifact.abi,
+      contractAddress.SuperFan,
+      SuperFanArtifact.abi,
       this._provider.getSigner(0)
     );
+
+    app = this._token;
+
+    sf = new SuperfluidSDK.Framework({
+      ethers: this._provider,
+      tokens: ["fDAI"]
+    });
+
+    await sf.initialize();
+
+    dai = await sf.contracts.TestToken.at(sf.tokens.fDAI.address);
+    daix = sf.tokens.fDAIx;
+
+    global.web3 = sf.web3;
+
   }
 
   // The next two methods are needed to start and stop polling data. While

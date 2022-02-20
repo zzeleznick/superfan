@@ -68,13 +68,17 @@ async function main() {
         daix.address,
   );
 
-  console.log("app address:", app.address);
+  const appAddress = app.address;
+  console.log("app address:",appAddress );
 
   // We also save the contract's artifacts and address in the frontend directory
-  saveFrontendFiles(app);
+  saveFrontendFiles({
+    appAddress,
+    daixAddress: daix.address,
+  });
 }
 
-function saveFrontendFiles(token) {
+function saveFrontendFiles({appAddress, daixAddress}) {
   const fs = require("fs");
   const contractsDir = __dirname + "/../frontend/src/contracts";
 
@@ -84,7 +88,10 @@ function saveFrontendFiles(token) {
 
   fs.writeFileSync(
     contractsDir + "/contract-address.json",
-    JSON.stringify({ SuperFan: token.address }, undefined, 2)
+    JSON.stringify({
+      SuperFan: appAddress,
+      DAIx: daixAddress,
+    }, undefined, 2)
   );
 
   const SuperFanArtifact = artifacts.readArtifactSync("SuperFan");
