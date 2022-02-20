@@ -51,6 +51,7 @@ let sf;
 let dai;
 let daix;
 let app;
+let user;
 
 export class Dapp extends React.Component {
   constructor(props) {
@@ -278,9 +279,10 @@ export class Dapp extends React.Component {
       // list of sites allowed access to your addresses" (Metamask > Settings > Connections)
       // To avoid errors, we reset the dapp state 
       if (newAddress === undefined) {
+        user = undefined;
         return this._resetState();
       }
-      
+
       this._initialize(newAddress);
     });
     
@@ -305,12 +307,12 @@ export class Dapp extends React.Component {
     // Fetching the token data and the user's balance are specific to this
     // sample project, but you can reuse the same initialization pattern.
     this._initializeEthers();
-    this._initializeSuperfluid();
+    this._initializeSuperfluid(userAddress);
     this._getTokenData();
     this._startPollingData();
   }
 
-  async _initializeSuperfluid() {
+  async _initializeSuperfluid(userAddress) {
     app = this._token;
 
     sf = new SuperfluidSDK.Framework({
@@ -327,6 +329,11 @@ export class Dapp extends React.Component {
     daix = sf.tokens.fDAIx;
 
     global.web3 = sf.web3;
+
+    user = sf.user({
+      address: userAddress,
+      token: daix.address
+    });
   }
 
   async _initializeEthers() {
