@@ -22,26 +22,27 @@ library Errors {
 contract SuperFan is ERC721, Ownable, SuperAppBase {
     using EnumerableSet for EnumerableSet.UintSet;
 
+    address public _owner;
+
     ISuperfluid private _host; // host
     IConstantFlowAgreementV1 private _cfa; // the stored constant flow agreement class address
 
     ISuperToken public _acceptedToken; // accepted token
 
     mapping(uint256 => int96) public flowRates;
-    mapping(uint256 => address) public tierIdToCreator;
 
-    mapping(uint256 => address) public subscriptionToCreator;
     mapping(uint256 => address) private subscriptionToPayor;
     mapping(uint256 => uint256) private subscriptionToTier;
     mapping(bytes32 => uint256) public flowIdToSubscription;
     
 
-    mapping(address => EnumerableSet.UintSet) private creatorTiers;
+    EnumerableSet.UintSet private creatorTiers;
 
     uint256 public nextTierId; // this is so we can increment the number (each stream has new id we store in flowRates)
     uint256 public nextSubscriptionId;
 
     constructor(
+        address owner,
         string memory _name,
         string memory _symbol,
         ISuperfluid host,
@@ -51,6 +52,7 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         _host = host;
         _cfa = cfa;
         _acceptedToken = acceptedToken;
+        _owner = owner;
 
         nextTierId = 1;
         nextSubscriptionId = 1;
@@ -71,33 +73,26 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
     event PatronTierCreated(uint256 tokenId, address receiver, int96 flowRate);
     event PatronTierSubscription(uint256 tokenId, address subscriber, address receiver, int96 flowRate);
 
-
     function createTier(int96 flowRate) external {
-        _createTier(msg.sender, flowRate);
-    }
-
-    function _createTier(address receiver, int96 flowRate) internal {
         require(flowRate > 0, Errors.PositiveFlow);
 
         flowRates[nextTierId] = flowRate;
-        tierIdToCreator[nextTierId] = receiver;
-        creatorTiers[receiver].add(nextTierId);
+        creatorTiers.add(nextTierId);
 
-        emit PatronTierCreated(nextTierId, receiver, flowRate);
+        emit PatronTierCreated(nextTierId, _owner, flowRate);
         nextTierId += 1;
     }
 
     function getTiers() public view returns (bytes32[] memory) {
-        return creatorTiers[msg.sender]._inner._values;
+        return creatorTiers._inner._values;
     }
 
-    function _handleSubscribe(address payor, address subscriber, address creator, int96 flowRate, uint256 tierId) internal {
-        subscriptionToCreator[nextSubscriptionId] = creator;
+    function _handleSubscribe(address payor, address subscriber, int96 flowRate, uint256 tierId) internal {
         subscriptionToPayor[nextSubscriptionId] = payor;
         subscriptionToTier[nextSubscriptionId] = tierId;
 
         _mint(subscriber, nextSubscriptionId);
-        emit PatronTierSubscription(nextSubscriptionId, subscriber, creator, flowRate);
+        emit PatronTierSubscription(nextSubscriptionId, subscriber, _owner, flowRate);
     
         nextSubscriptionId += 1;
     }
@@ -116,7 +111,6 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         // preserve flowIdToSubscription for debugging
         // delete flowIdToSubscription[agreementId];
 
-        delete subscriptionToCreator[tokenId];
         delete subscriptionToPayor[tokenId];
         delete subscriptionToTier[tokenId];
     }
@@ -125,30 +119,25 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
         private
         returns (bytes memory newCtx)
     {
-        newCtx = _ctx;
         (uint256 tierId, uint256 tokenId) = abi.decode(_host.decodeCtx(_ctx).userData, (uint256, uint256));
+
         console.log("tierId: %s, tokenId: %s", tierId, tokenId);
-        
+        // console.log("agreementId: %s", agreementId);
+
         require(tokenId == nextSubscriptionId, Errors.TokenIdMismatch);
 
-        (address subscriber, address app) = abi.decode(agreementData, (address, address));
+        (address subscriber,) = abi.decode(agreementData, (address, address));
         (,int96 flowRate,,) = _cfa.getFlowByID(_acceptedToken, agreementId);
 
         int96 expectedFlowRate = flowRates[tierId];
         require(flowRate == expectedFlowRate, Errors.FlowRateMismatch);
-        
-        address expectedCreator = tierIdToCreator[tierId];
-        
-        // require(creator == expectedCreator, Errors.TierOwnerMismatch);
-        // require(length(creatorTiers[creator]) > 0, "No tiers found for creator");
-        // require(contains(creatorTiers[creator]), tierId), "Creator does not have this tier");
-        
+
         flowIdToSubscription[agreementId] = nextSubscriptionId;
 
         // pass from app to creator
-        _createFlow()
+        newCtx = _createFlowWithCtx(_ctx, _owner, tierId, nextSubscriptionId, flowRate);
 
-        _handleSubscribe(subscriber, subscriber, creator, flowRate, tierId);
+        _handleSubscribe(subscriber, subscriber, flowRate, tierId);
     }
 
     /*
@@ -292,36 +281,29 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
     /**************************************************************************
      * Library
      *************************************************************************/
-    function _createFlow(address to, uint256 tierId, uint256 tokenId, int96 flowRate) internal {
-        if (to == address(this) || to == address(0)) return;
+
+    function _createFlowWithCtx(
+        bytes memory ctx,
+        address to,
+        uint256 tierId,
+        uint256 tokenId,
+        int96 flowRate
+    ) internal returns (bytes memory newCtx) {
 
         int96 expectedFlowRate = flowRates[tierId];
         require(flowRate == expectedFlowRate, Errors.FlowRateMismatch);
 
-        _host.callAgreement(
-            _cfa,
-            abi.encodeWithSelector(
-                _cfa.createFlow.selector,
-                _acceptedToken,
-                to,
-                flowRate,
-                new bytes(0) // placeholder
-            ),
-            abi.encode(tierId, tokenId)  // user data
-        );
-    }
-
-    function _deleteFlow(address from, address to) internal {
-        _host.callAgreement(
-            _cfa,
-            abi.encodeWithSelector(
-                _cfa.deleteFlow.selector,
-                _acceptedToken,
-                from,
-                to,
-                new bytes(0) // placeholder
-            ),
-            "0x"
+        (newCtx, ) = _host.callAgreementWithContext(
+                _cfa,
+                abi.encodeWithSelector(
+                    _cfa.createFlow.selector,
+                    _acceptedToken,
+                    to,
+                    flowRate,
+                    new bytes(0) // placeholder
+                ),
+                abi.encode(tierId, tokenId),  // user data
+                ctx
         );
     }
 }
@@ -329,4 +311,6 @@ contract SuperFan is ERC721, Ownable, SuperAppBase {
 
 // balanceOf(tokenId)
 // getFlow -> see
+
+// factory contract
 

@@ -158,6 +158,7 @@ describe("SuperFan contract", function () {
     console.log(daix.address);
 
     app = await SuperFan.deploy(
+        u.admin.address,
         "SuperFan",
         "SFAN",
         sf.host.address,
@@ -182,27 +183,20 @@ describe("SuperFan contract", function () {
   describe("CreateTiers", function () {
 
     it("Should enable tiers to be created", async function () {
+      const { admin } = u;
+
       let count = await app.nextTierId();
       expect(count).to.equal(1);
 
-      let creator = await app.tierIdToCreator(1);
-      expect(creator).to.equal(ZERO_ADDRESS);
-
-      await app.createTier(3858024691358);
+      await app.connect(admin.signer).createTier(3858024691358);
 
       count = await app.nextTierId();
       expect(count).to.equal(2);
 
-      creator = await app.tierIdToCreator(1);
-      expect(creator).to.equal(u.admin.address)
-
-      await app.createTier(38580246913580);
+      await app.connect(admin.signer).createTier(38580246913580);
 
       count = await app.nextTierId();
       expect(count).to.equal(3);
-
-      creator = await app.tierIdToCreator(2);
-      expect(creator).to.equal(u.admin.address)
 
     });
 
@@ -215,6 +209,9 @@ describe("SuperFan contract", function () {
       await upgrade([alice]);
       await appStatus();
 
+      let nextSubs = await app.nextSubscriptionId();
+      expect(nextSubs).to.equal(1);
+
       const expectedFlowRate = await app.flowRates(1)
       console.log(`expectedFlowRate: ${expectedFlowRate}`);
       console.log(`alice.address: ${alice.address}`);
@@ -224,23 +221,45 @@ describe("SuperFan contract", function () {
         recipient: u.app,
         userData: web3.eth.abi.encodeParameters(['uint256', 'uint256'],[1, 1]) // actual recipient
       });
-      // await app.connect(alice.signer)._subscribe(alice.address, 1);
+
+      nextSubs = await app.nextSubscriptionId();
+      expect(nextSubs).to.equal(2);
+
+      const aliceBalance = await app.balanceOf(alice.address);
+      expect(aliceBalance).to.equal(1);
+
       await appStatus();
       await logUsers();
     });
-    /*
+
     it("Should enable multiple subscription", async function () {
       const { bob, carol } = u;
       await upgrade([bob, carol]);
       await appStatus();
 
-      await app.connect(bob.signer)._subscribe(bob.address, 1);
-      await app.connect(carol.signer)._subscribe(carol.address, 1);
+      const nextSubs = await app.nextSubscriptionId();
+      const silverFlowRate = await app.flowRates(1);
+      const goldFlowRate = await app.flowRates(2);
+
+      await bob.flow({
+        flowRate: `${silverFlowRate}`,
+        recipient: u.app,
+        userData: web3.eth.abi.encodeParameters(['uint256', 'uint256'],[1, 2]) // actual recipient
+      });
+
+      expect(await app.nextSubscriptionId()).to.equal(nextSubs+1);
+
+      await carol.flow({
+        flowRate: `${goldFlowRate}`,
+        recipient: u.app,
+        userData: web3.eth.abi.encodeParameters(['uint256', 'uint256'],[2, 3]) // actual recipient
+      });
+
+      expect(await app.nextSubscriptionId()).to.equal(nextSubs+2);
       
       await appStatus();
       await logUsers();
     });
-    */
 
   });
 
